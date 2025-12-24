@@ -4,7 +4,9 @@ MCP (Model Context Protocol) server that exposes Databricks operations as AI-fri
 
 ## Overview
 
-This is a thin wrapper around `databricks-mcp-core` that implements the MCP protocol over FastAPI with Server-Sent Events (SSE) transport.
+This is a thin wrapper around `databricks-mcp-core` that implements the MCP protocol using:
+- **stdio transport** (recommended for local development) - uses standard input/output
+- **HTTP transport** (for remote access) - FastAPI server with JSON-RPC endpoints
 
 ## Available Tools
 
@@ -61,30 +63,71 @@ DATABRICKS_TOKEN=dapi...
 
 ## Running the Server
 
+### Local Development (stdio - Recommended)
+
+The stdio transport is recommended for local development. It's automatically used when configured in Claude/Cursor MCP settings.
+
+**Manual testing:**
+```bash
+python -m databricks_mcp_server.stdio_server
+```
+
+### Remote Access (HTTP)
+
+For remote access or when HTTP is preferred:
+
 ```bash
 # Development mode
-python -m databricks_mcp_server.server
+uvicorn databricks_mcp_server.server:app --host 127.0.0.1 --port 8000
 
-# Production mode with uvicorn
+# Production mode
 uvicorn databricks_mcp_server.server:app --host 0.0.0.0 --port 8000
 ```
 
-## MCP Endpoints
-
-- `GET /sse` - SSE endpoint for MCP communication
+**HTTP Endpoints:**
 - `POST /message` - JSON-RPC message handling
 - `GET /` - Health check
 
 ## Usage with Claude Code
 
-Configure in your Claude Code MCP settings:
+### Recommended: stdio Transport (Local)
+
+Add to `.claude/.mcp.json`:
 
 ```json
 {
   "mcpServers": {
-    "databricks": {
-      "url": "http://localhost:8000/sse",
-      "transport": "sse"
+    "ai-dev-kit": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "databricks_mcp_server.stdio_server"],
+      "transport": "stdio"
+    }
+  }
+}
+```
+
+Or using pip:
+
+```json
+{
+  "mcpServers": {
+    "ai-dev-kit": {
+      "command": "python",
+      "args": ["-m", "databricks_mcp_server.stdio_server"],
+      "transport": "stdio"
+    }
+  }
+}
+```
+
+### Alternative: HTTP Transport (Remote)
+
+```json
+{
+  "mcpServers": {
+    "ai-dev-kit": {
+      "url": "http://localhost:8000/message",
+      "transport": "http-stream"
     }
   }
 }
@@ -94,10 +137,14 @@ Configure in your Claude Code MCP settings:
 
 ```
 databricks-mcp-server/
-├── server.py              # FastAPI app + MCP protocol
+├── stdio_server.py        # stdio transport (recommended for local)
+├── server.py              # HTTP transport (for remote access)
+├── message_handler.py     # Shared MCP message handling logic
 └── tools/
     ├── unity_catalog.py   # UC tool wrappers
-    └── compute.py         # Compute tool wrappers
+    ├── compute.py         # Compute tool wrappers
+    ├── spark_declarative_pipelines.py  # Pipeline tool wrappers
+    └── synthetic_data_generation.py     # Synthetic data tool wrappers
 ```
 
 Each tool wrapper:

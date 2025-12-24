@@ -35,7 +35,8 @@ dev = [
 ]
 
 [project.scripts]
-databricks-mcp-server = "databricks_mcp_server.server:app"
+databricks-mcp-server = "databricks_mcp_server.stdio_server:run_stdio_server"
+databricks-mcp-server-http = "databricks_mcp_server.server:app"
 
 [tool.setuptools.packages.find]
 where = ["."]

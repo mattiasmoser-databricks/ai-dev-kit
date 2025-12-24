@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "ai-dev-kit": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "databricks_mcp_server.stdio_server"],
+      "transport": "stdio"
+    }
+  }
+}
+

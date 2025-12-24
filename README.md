@@ -24,25 +24,28 @@ databricks-mcp-server/            # MCP protocol wrapper
 ## Installation
 
 ```bash
-# Install packages
+# Using uv (recommended)
+uv venv
+uv pip install -e databricks-mcp-core
+uv pip install -e databricks-mcp-server
+
+# Or using pip
 pip install -e databricks-mcp-core
 pip install -e databricks-mcp-server
 
 # Configure authentication (use your Databricks profile)
 export DATABRICKS_CONFIG_PROFILE=your-profile
 # or set DATABRICKS_HOST and DATABRICKS_TOKEN
-
-# Run MCP server
-python -m databricks_mcp_server.server
 ```
 
 ## Quickstart
 
 ### Using the MCP Server with Claude Code
 
-1. Start the server: `python -m databricks_mcp_server.server`
-2. Configure Claude Code (add to MCP settings - see below)
-3. Ask Claude to list your catalogs, create tables, run pipelines, etc.
+1. Install packages (see above)
+2. Configure authentication (uses DEFAULT profile from `~/.databrickscfg` if not set)
+3. Configure Claude Code MCP settings (see below) - no need to manually start server!
+4. Ask Claude to list your catalogs, create tables, run pipelines, etc.
 
 ### Using the Core Library Directly
 
@@ -89,14 +92,30 @@ All functions use the official `databricks-sdk` and handle authentication automa
 
 ## Usage with Claude Code
 
-Add to your MCP settings:
+Add to `.claude/.mcp.json`:
 
 ```json
 {
   "mcpServers": {
-    "databricks": {
-      "url": "http://localhost:8000/sse",
-      "transport": "sse"
+    "ai-dev-kit": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "databricks_mcp_server.stdio_server"],
+      "transport": "stdio"
+    }
+  }
+}
+```
+
+**Note:** The server runs automatically when Claude needs it - no manual startup required!
+
+If not using `uv`, use:
+```json
+{
+  "mcpServers": {
+    "ai-dev-kit": {
+      "command": "python",
+      "args": ["-m", "databricks_mcp_server.stdio_server"],
+      "transport": "stdio"
     }
   }
 }
