@@ -6,10 +6,17 @@
 # These skills teach Claude how to work with Databricks using MCP tools.
 #
 # Usage:
+#   # Install all skills
 #   curl -sSL https://raw.githubusercontent.com/databricks-solutions/ai-dev-kit/main/databricks-skills/install_skills.sh | bash
 #
-# Or run locally:
-#   ./install_skills.sh
+#   # Install specific skills
+#   curl -sSL https://raw.githubusercontent.com/databricks-solutions/ai-dev-kit/main/databricks-skills/install_skills.sh | bash -s -- sdp dabs-writer
+#
+#   # Or run locally
+#   ./install_skills.sh                    # Install all
+#   ./install_skills.sh sdp dabs-writer    # Install specific skills
+#   ./install_skills.sh --list             # List available skills
+#   ./install_skills.sh --help             # Show help
 #
 
 set -e
@@ -26,41 +33,79 @@ REPO_URL="https://github.com/databricks-solutions/ai-dev-kit"
 REPO_RAW_URL="https://raw.githubusercontent.com/databricks-solutions/ai-dev-kit/main"
 SKILLS_DIR=".claude/skills"
 
-# Skills to install
-SKILLS=(
-    "dabs-writer"
-    "databricks-python-sdk"
-    "sdp-writer"
-    "synthetic-data-generation"
-)
+# All available skills
+ALL_SKILLS="dabs-writer databricks-python-sdk sdp synthetic-data-generation"
 
-echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║        Databricks Skills Installer for Claude Code         ║${NC}"
-echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
-echo ""
+# Get skill description
+get_skill_description() {
+    case "$1" in
+        "dabs-writer") echo "Databricks Asset Bundles - deployment and configuration" ;;
+        "databricks-python-sdk") echo "Databricks Python SDK, Connect, and REST API" ;;
+        "sdp") echo "Spark Declarative Pipelines (SDP/LDP/DLT)" ;;
+        "synthetic-data-generation") echo "Synthetic test data generation" ;;
+        *) echo "Unknown skill" ;;
+    esac
+}
 
-# Check if we're in a git repo or project directory
-if [ ! -d ".git" ] && [ ! -f "pyproject.toml" ] && [ ! -f "package.json" ] && [ ! -f "databricks.yml" ]; then
-    echo -e "${YELLOW}Warning: This doesn't look like a project root directory.${NC}"
-    echo -e "Current directory: $(pwd)"
-    read -p "Continue anyway? (y/N): " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        echo "Aborted."
-        exit 1
-    fi
-fi
+# Get extra files for a skill (besides SKILL.md)
+get_skill_extra_files() {
+    case "$1" in
+        "sdp") echo "ingestion-patterns.md streaming-patterns.md scd-query-patterns.md python-api-versions.md performance-tuning.md dlt-migration-guide.md" ;;
+        *) echo "" ;;
+    esac
+}
 
-# Create .claude/skills directory if it doesn't exist
-if [ ! -d "$SKILLS_DIR" ]; then
-    echo -e "${GREEN}Creating $SKILLS_DIR directory...${NC}"
-    mkdir -p "$SKILLS_DIR"
-fi
+# Show usage
+show_help() {
+    echo -e "${BLUE}Databricks Skills Installer for Claude Code${NC}"
+    echo ""
+    echo "Usage:"
+    echo "  ./install_skills.sh [options] [skill1 skill2 ...]"
+    echo ""
+    echo "Options:"
+    echo "  --help, -h     Show this help message"
+    echo "  --list, -l     List all available skills"
+    echo "  --all, -a      Install all skills (default if no skills specified)"
+    echo ""
+    echo "Examples:"
+    echo "  ./install_skills.sh                    # Install all skills"
+    echo "  ./install_skills.sh sdp                # Install only SDP skill"
+    echo "  ./install_skills.sh sdp dabs-writer    # Install specific skills"
+    echo "  ./install_skills.sh --list             # List available skills"
+    echo ""
+    echo "Available skills:"
+    for skill in $ALL_SKILLS; do
+        echo "  - $skill: $(get_skill_description "$skill")"
+    done
+    echo ""
+}
+
+# List available skills
+list_skills() {
+    echo -e "${BLUE}Available Databricks Skills:${NC}"
+    echo ""
+    for skill in $ALL_SKILLS; do
+        echo -e "  ${GREEN}$skill${NC}"
+        echo -e "    $(get_skill_description "$skill")"
+    done
+    echo ""
+}
+
+# Validate skill name
+is_valid_skill() {
+    local skill=$1
+    for valid_skill in $ALL_SKILLS; do
+        if [ "$skill" = "$valid_skill" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
 
 # Function to download a skill
 download_skill() {
     local skill_name=$1
     local skill_dir="$SKILLS_DIR/$skill_name"
-    local temp_dir=$(mktemp -d)
 
     echo -e "\n${BLUE}Processing skill: ${skill_name}${NC}"
 
@@ -68,7 +113,7 @@ download_skill() {
     if [ -d "$skill_dir" ]; then
         echo -e "${YELLOW}  Skill '$skill_name' already exists.${NC}"
         read -p "  Overwrite? (y/N): " overwrite
-        if [[ ! "$overwrite" =~ ^[Yy]$ ]]; then
+        if [ "$overwrite" != "y" ] && [ "$overwrite" != "Y" ]; then
             echo -e "  ${YELLOW}Skipped.${NC}"
             return 0
         fi
@@ -90,31 +135,108 @@ download_skill() {
         return 1
     fi
 
-    # Try to download additional files (optional)
-    # These are common additional files that skills might have
-    for extra_file in "examples.md" "patterns.md" "reference.md" "migration-guide.md"; do
-        if curl -sSL -f "${REPO_RAW_URL}/databricks-skills/${skill_name}/${extra_file}" -o "$skill_dir/${extra_file}" 2>/dev/null; then
-            echo -e "  ${GREEN}✓${NC} Downloaded ${extra_file}"
-        fi
-    done
-
-    # Clean up temp directory
-    rm -rf "$temp_dir"
+    # Download skill-specific extra files
+    local extra_files=$(get_skill_extra_files "$skill_name")
+    if [ -n "$extra_files" ]; then
+        for extra_file in $extra_files; do
+            if curl -sSL -f "${REPO_RAW_URL}/databricks-skills/${skill_name}/${extra_file}" -o "$skill_dir/${extra_file}" 2>/dev/null; then
+                echo -e "  ${GREEN}✓${NC} Downloaded ${extra_file}"
+            else
+                echo -e "  ${YELLOW}○${NC} Optional file ${extra_file} not found"
+            fi
+        done
+    fi
 
     echo -e "  ${GREEN}✓ Installed successfully${NC}"
     return 0
 }
+
+# Parse arguments
+SKILLS_TO_INSTALL=""
+
+while [ $# -gt 0 ]; do
+    case $1 in
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+        --list|-l)
+            list_skills
+            exit 0
+            ;;
+        --all|-a)
+            SKILLS_TO_INSTALL="$ALL_SKILLS"
+            shift
+            ;;
+        -*)
+            echo -e "${RED}Unknown option: $1${NC}"
+            echo "Use --help for usage information."
+            exit 1
+            ;;
+        *)
+            # Validate skill name
+            if is_valid_skill "$1"; then
+                SKILLS_TO_INSTALL="$SKILLS_TO_INSTALL $1"
+            else
+                echo -e "${RED}Unknown skill: $1${NC}"
+                echo ""
+                echo "Available skills:"
+                for skill in $ALL_SKILLS; do
+                    echo "  - $skill"
+                done
+                echo ""
+                echo "Use --list for more details."
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# If no skills specified, install all
+if [ -z "$SKILLS_TO_INSTALL" ]; then
+    SKILLS_TO_INSTALL="$ALL_SKILLS"
+fi
+
+# Header
+echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║        Databricks Skills Installer for Claude Code         ║${NC}"
+echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+# Check if we're in a git repo or project directory
+if [ ! -d ".git" ] && [ ! -f "pyproject.toml" ] && [ ! -f "package.json" ] && [ ! -f "databricks.yml" ]; then
+    echo -e "${YELLOW}Warning: This doesn't look like a project root directory.${NC}"
+    echo -e "Current directory: $(pwd)"
+    read -p "Continue anyway? (y/N): " confirm
+    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+        echo "Aborted."
+        exit 1
+    fi
+fi
+
+# Create .claude/skills directory if it doesn't exist
+if [ ! -d "$SKILLS_DIR" ]; then
+    echo -e "${GREEN}Creating $SKILLS_DIR directory...${NC}"
+    mkdir -p "$SKILLS_DIR"
+fi
+
+# Show what will be installed
+echo -e "${GREEN}Skills to install:${NC}"
+for skill in $SKILLS_TO_INSTALL; do
+    echo -e "  - $skill"
+done
 
 # Download each skill
 echo -e "\n${GREEN}Installing Databricks skills...${NC}"
 installed=0
 failed=0
 
-for skill in "${SKILLS[@]}"; do
+for skill in $SKILLS_TO_INSTALL; do
     if download_skill "$skill"; then
-        ((installed++))
+        installed=$((installed + 1))
     else
-        ((failed++))
+        failed=$((failed + 1))
     fi
 done
 
@@ -129,8 +251,8 @@ fi
 echo ""
 echo -e "${BLUE}Skills installed to: ${SKILLS_DIR}/${NC}"
 echo ""
-echo -e "Available skills:"
-for skill in "${SKILLS[@]}"; do
+echo -e "Installed skills:"
+for skill in $SKILLS_TO_INSTALL; do
     if [ -d "$SKILLS_DIR/$skill" ]; then
         echo -e "  ${GREEN}✓${NC} $skill"
     fi
