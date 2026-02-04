@@ -182,17 +182,20 @@ async def invoke_agent(request: Request, body: InvokeAgentRequest):
                     stream.add_event({'type': 'text_delta', 'text': text})
 
                 elif event_type == 'text':
-                    # Complete text block from AssistantMessage
-                    # Always send 'text' events - the frontend needs them to display the final message
-                    # text_delta provides token-by-token streaming, but 'text' provides the complete block
+                    # Complete text block - accumulate all text blocks
+                    # Claude sends multiple text blocks when there are tool calls in between
+                    # We track received_deltas to know if we should also emit text events
+                    # (if deltas are being used, the client already has the text token-by-token)
                     text = event.get('text', '')
                     if text:
                         if not received_deltas:
-                            # No deltas received, accumulate text for persistence
+                            # No deltas received, so send complete text blocks to client
                             final_text += text
-                        # Always send the complete text block to the frontend
-                        # The frontend can use text_delta for streaming and 'text' for final display
-                        stream.add_event({'type': 'text', 'text': text})
+                            stream.add_event({'type': 'text', 'text': text})
+                        # Note: If received_deltas is True, we skip sending 'text' events
+                        # because the client already received the same content via 'text_delta'
+                        # BUT we still need to track final_text for persistence
+                        # The text_delta handler already accumulates to final_text
 
                 elif event_type == 'thinking':
                     stream.add_event({

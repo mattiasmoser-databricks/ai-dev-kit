@@ -316,7 +316,6 @@ export default function ProjectPage() {
     try {
       let conversationId = currentConversation?.id;
       let fullText = '';
-      let receivedDeltas = false; // Track if we received streaming deltas
 
       await invokeAgent({
         projectId,
@@ -335,28 +334,26 @@ export default function ProjectPage() {
             conversationId = event.conversation_id as string;
             fetchConversations(projectId).then(setConversations);
           } else if (type === 'text_delta') {
-            // Token-by-token streaming - accumulate and display
+            // Token-by-token streaming - accumulate and display for live updates
             const text = event.text as string;
             fullText += text;
-            receivedDeltas = true;
             console.log('[STREAM] text_delta received, fullText length:', fullText.length);
             setStreamingText(fullText);
           } else if (type === 'text') {
-            // Complete text block - only use if we haven't received deltas
-            // When streaming is enabled, text_delta events contain the same content
-            // so we skip 'text' events to avoid duplication
-            console.log('[STREAM] text event received, receivedDeltas:', receivedDeltas, 'text length:', (event.text as string)?.length);
-            if (!receivedDeltas) {
-              const text = event.text as string;
-              if (text) {
-                // Add newline separator between text blocks for readability
-                if (fullText && !fullText.endsWith('\n')) {
-                  fullText += '\n\n';
-                }
-                fullText += text;
-                console.log('[STREAM] text accumulated, fullText length:', fullText.length);
-                setStreamingText(fullText);
+            // Complete text block from AssistantMessage - the authoritative final content
+            // This event contains the COMPLETE text for this response segment
+            // We always use it to ensure final responses after tool execution are captured
+            const text = event.text as string;
+            console.log('[STREAM] text event received, text length:', text?.length, 'current fullText length:', fullText.length);
+            if (text) {
+              // Append to fullText (there may be multiple text blocks in a conversation)
+              // Add separator if needed
+              if (fullText && !fullText.endsWith('\n') && !text.startsWith('\n')) {
+                fullText += '\n\n';
               }
+              fullText += text;
+              console.log('[STREAM] fullText updated, new length:', fullText.length);
+              setStreamingText(fullText);
             }
           } else if (type === 'thinking' || type === 'thinking_delta') {
             // Handle both complete thinking blocks and streaming thinking deltas
